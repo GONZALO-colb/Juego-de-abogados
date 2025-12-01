@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Juicio de Abogados – Versión Ultra Extendida</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+    :root{
+        --bg:#e6e9ee;
+        --panel:#ffffff;
+        --accent:#1f6feb;
+        --muted:#7a7a7a;
+        --danger:#d9534f;
+        --success:#28a745;
+    }
+    *{box-sizing:border-box}
+    body{
+        margin:0;
+        font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+        background:var(--bg);
+        color:#222;
+    }
+
+    /* Layout */
+    .wrap{max-width:1200px;margin:18px auto;padding:18px;}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+    header h1{font-size:20px;margin:0}
+    .top-controls{display:flex;gap:8px;align-items:center}
+
+    main{display:grid;grid-template-columns:320px 1fr 320px;gap:16px}
+
+    /* Left: Menu / expedientes */
+    .panel{
+        background:var(--panel);
+        border-radius:10px;padding:14px;box-shadow:0 6px 18px rgba(0,0,0,.06);
+    }
+    .case-list .case-item{padding:10px;border-radius:8px;cursor:pointer;margin-bottom:8px;border:1px solid #eee;}
+    .case-item.active{background:linear-gradient(90deg,#f5f9ff,#ffffff);border-color:var(--accent);box-shadow:0 4px 12px rgba(31,111,235,.06)}
+    .small{font-size:13px;color:var(--muted)}
+
+    /* Center: main gameplay */
+    #stage{background:var(--panel);border-radius:10px;padding:16px;min-height:520px;box-shadow:0 6px 18px rgba(0,0,0,.06)}
+    #headerStage{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+    #dialogBox{background:#f6f8fb;padding:14px;border-radius:8px;min-height:140px;font-size:16px;white-space:pre-line}
+    .choices{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+    .choice{background:#fff;padding:10px;border-radius:8px;border:1px solid #e6e6e6;cursor:pointer;transition:all .12s}
+    .choice:hover{transform:translateY(-3px);box-shadow:0 6px 18px rgba(0,0,0,.06)}
+    .metab{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+
+    /* Right: dossier / timeline */
+    .dossier{position:relative}
+    .evidence-list{display:flex;flex-direction:column;gap:8px}
+    .evidence-item{padding:8px;border-radius:8px;border:1px dashed #dcdcdc;background:#fff;cursor:pointer}
+    #evidenceDetail{margin-top:10px;padding:10px;border-radius:8px;background:#fff;border:1px solid #eee}
+    .row{display:flex;gap:8px;align-items:center}
+
+    footer{margin-top:12px;text-align:center;color:var(--muted);font-size:13px}
+
+    /* badges */
+    .badge{display:inline-block;padding:6px 8px;border-radius:8px;background:#f0f5ff;color:var(--accent);font-weight:600}
+
+    /* responsive */
+    @media (max-width:1000px){
+        main{grid-template-columns:1fr; padding-bottom:60px}
+        .wrap{padding:8px}
+    }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <header>
+        <h1>⚖️ Juicio de Abogados — Modo Completo</h1>
+        <div class="top-controls">
+            <div id="statusSummary" class="small">Cargando...</div>
+            <button onclick="resetGame()" title="Reiniciar todo">Reiniciar</button>
+        </div>
+    </header>
+
+    <main>
+        <!-- LEFT: Casos y controles -->
+        <aside class="panel">
+            <h3>Casos disponibles</h3>
+            <div class="case-list" id="caseList"></div>
+
+            <hr style="margin:12px 0;border:none;border-top:1px solid #f0f0f0">
+            <div class="small">Controles</div>
+            <div style="margin-top:8px;display:flex;gap:8px">
+                <button onclick="saveProgress()">Guardar</button>
+                <button onclick="loadProgress()">Cargar</button>
+            </div>
+            <div style="margin-top:12px" class="small">Progreso guardado en tu navegador (localStorage).</div>
+        </aside>
+
+        <!-- CENTER: Stage -->
+        <section id="stage" class="panel">
+            <div id="headerStage">
+                <div>
+                    <div id="caseTitle" style="font-weight:700">Seleccioná un caso</div>
+                    <div class="small" id="casePhase">Fase: —</div>
+                </div>
+                <div class="metab">
+                    <div class="badge" id="credBadge">Credibilidad: 0</div>
+                    <div class="badge" id="scoreBadge" style="background:#fff;color:#444;border:1px solid #eee">Puntos: 0</div>
+                </div>
+            </div>
+
+            <div id="dialogBox">Aquí aparecerán los diálogos y la escena.</div>
+
+            <div class="choices" id="choices"></div>
+
+            <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+                <button onclick="openDossier()">Abrir Expediente</button>
+                <button onclick="presentEvidencePrompt()">Presentar Evidencia</button>
+                <button onclick="forceAdvance()">Forzar Avance (para debug)</button>
+            </div>
+        </section>
+
+        <!-- RIGHT: Dossier / Evidencias -->
+        <aside class="panel dossier">
+            <h3>📂 Expediente interactivo</h3>
+            <div class="small">Haz click en una evidencia para verla. Algunas se desbloquean por progreso.</div>
+
+            <div style="margin-top:10px">
+                <div class="small">Evidencias del caso</div>
+                <div id="evidenceArea" class="evidence-list" style="margin-top:8px"></div>
+            </div>
+
+            <div id="evidenceDetail">
+                <h4 id="eviTitle">Seleccioná una evidencia</h4>
+                <div id="eviContent" class="small">Detalle y notas aparecerán aquí.</div>
+                <div id="eviActions" style="margin-top:8px"></div>
+            </div>
+
+            <hr style="margin:12px 0;border:none;border-top:1px solid #f0f0f0">
+
+            <div>
+                <h4>Timeline</h4>
+                <div id="timeline" class="small">Sin acciones aún.</div>
+            </div>
+        </aside>
+    </main>
+
+    <footer>Hecho para jugar — pide más casos o que añada audio/effects cuando quieras.</footer>
+</div>
+
+<script>
+/* ======================
+   Datos: casos extensos
+   ====================== */
+
+const CASES = [
+    /* ====== CASO 1 ====== */
+    {
+        id: 'C1',
+        title: 'Caso 1 — Robo a la Joyería (Complejo)',
+        description: 'Un robo nocturno en "Relojes Aurora". Hay testigos, una grabación borrosa y ropa encontrada.',
+        phase: 0, // 0=presentacion,1=interrogatorio,2=contradiccion,3=pruebas,4=veredicto,5=final
+        score: 0,
+        credibility: 50, // base credibilidad para testigos (0-100)
+        timeline: [],
+        evidences: [
+            { id: 'C1-E1', title: 'Registro Laboral', detail: 'Hoja de control: entrada 16:58. Firma digital.', unlocked: true, type:'doc' },
+            { id: 'C1-E2', title: 'Foto Seguridad (borrosa)', detail: 'Imagen con baja resolución: se ve una figura con capucha.', unlocked: true, type:'img' },
+            { id: 'C1-E3', title: 'Campera Roja encontrada', detail: 'Campera talla L encontrada cercana a la escena.', unlocked: true, type:'obj' },
+            { id: 'C1-E4', title: 'Declaración Sra. Ramírez', detail: 'La testigo dice haber visto la campera roja a las 17:00 desde su ventana.', unlocked: true, type:'stmt' },
+            { id: 'C1-E5', title: 'Mensaje anónimo', detail: 'Mensaje que sugiere que alguien prepara una coartada. Desbloqueable en fase 2.', unlocked: false, type:'msg' }
+        ],
+        characters: {
+            judge: 'Juez Moreno',
+            accused: { name: 'Tomás Herrera', bio: 'Empleado de limpieza, 28 años.' },
+            witness: { name: 'Sra. Ramírez', desc: 'Vive enfrente de la joyería.' },
+            prosecutor: 'Fiscal Díaz',
+            detective: 'Detective López'
+        },
+        // escenas ramificadas
+        scenes: [
+            // Presentacion
+            {
+                id:'C1-0',
+                speaker:'Juez',
+                text:'Damos inicio al caso Nº 301. Acusado: Tomás Herrera. La fiscalía expone su teoría.',
+                choices:[{text:'Escuchar a la fiscal', next:'C1-1'}]
+            },
+            {
+                id:'C1-1',
+                speaker:'Fiscal Díaz',
+                text:'Su señoría, la cámara muestra al autor. Además, se halló una campera roja. Testigo presencial confirma la ropa.',
+                choices:[
+                    {text:'Objeción: la imagen es borrosa', effect:{cred:-5}, next:'C1-2'},
+                    {text:'Pedir interrogar al testigo', next:'C1-3'}
+                ]
+            },
+            // Interrogatorio testigo
+            {
+                id:'C1-2',
+                speaker:'Juez',
+                text:'Objeción registrada. Continúe.',
+                choices:[{text:'Interrogar testigo', next:'C1-3'}]
+            },
+            {
+                id:'C1-3',
+                speaker:'Sra. Ramírez',
+                text:'Vi claramente la campera roja entrando a las 17:00. Estoy segura.',
+                choices:[
+                    {text:'¿A qué distancia estaba su ventana?', next:'C1-4'},
+                    {text:'¿Segura que eran las 17:00 exactas?', next:'C1-5'}
+                ]
+            },
+            {
+                id:'C1-4',
+                speaker:'Sra. Ramírez',
+                text:'A unos 25 metros. La calle estaba iluminada.',
+                choices:[
+                    {text:'Presentar: Foto Seguridad', present:'C1-E2', next:'C1-6'},
+                    {text:'Preguntar si conocía al acusado', next:'C1-7'}
+                ]
+            },
+            {
+                id:'C1-5',
+                speaker:'Sra. Ramírez',
+                text:'Creo que sí, a las 17:00. Pero puedo equivocarme en minutos.',
+                choices:[
+                    {text:'Presentar: Registro Laboral', present:'C1-E1', next:'C1-6'},
+                    {text:'Buscar contradicción', next:'C1-7'}
+                ]
+            },
+            {
+                id:'C1-6',
+                speaker:'Juez',
+                text:'Se presenta evidencia al estrado para comparar.',
+                choices:[
+                    {text:'Analizar evidencia en expediente', action:'openDossier', next:'C1-8'},
+                    {text:'Continuar interrogatorio', next:'C1-8'}
+                ]
+            },
+            {
+                id:'C1-7',
+                speaker:'Sra. Ramírez',
+                text:'No conocía al hombre. Solo vi la campera.',
+                choices:[
+                    {text:'Atacar la distancia y visibilidad', effect:{cred:-10}, next:'C1-8'},
+                    {text:'Seguir con la fiscalía', next:'C1-8'}
+                ]
+            },
+            {
+                id:'C1-8',
+                speaker:'Detective López',
+                text:'Hemos hallado que la campera encontrada es talla L; el acusado usa S. Hay una posible coartada electrónica.',
+                choices:[
+                    {text:'Solicitar analizar la campera', action:'unlockEvidence', arg:'C1-E3', next:'C1-9'},
+                    {text:'Enviar mensaje al juez pidiendo más tiempo', next:'C1-9'}
+                ]
+            },
+            {
+                id:'C1-9',
+                speaker:'Sistema',
+                text:'Se desbloquea: Mensaje anónimo (posible coartada).',
+                choices:[
+                    {text:'Abrir expediente y leer Mensaje', action:'unlockEvidence', arg:'C1-E5', next:'C1-10'},
+                    {text:'Presentar veredicto provisional', next:'C1-11'}
+                ]
+            },
+            {
+                id:'C1-10',
+                speaker:'Sistema',
+                text:'El mensaje sugiere que alguien intentó plantar la campera. Esto afecta la credibilidad de la prueba física.',
+                choices:[
+                    {text:'Presentar el hallazgo en el estrado', effect:{score:10,cred:8}, next:'C1-11'},
+                    {text:'Guardar para más adelante', next:'C1-11'}
+                ]
+            },
+            {
+                id:'C1-11',
+                speaker:'Juez',
+                text:'Con las contradicciones presentadas, se solicita deliberación. ¿Qué hará la defensa?',
+                choices:[
+                    {text:'Pedir absolución por falta de pruebas', next:'C1-12'},
+                    {text:'Forzar confrontación entre testigos', next:'C1-13'},
+                ]
+            },
+            {
+                id:'C1-12',
+                speaker:'Juez',
+                text:'Considerando las inconsistencias, el juez declara INOCENTE si la fiscalía no prueba más.',
+                choices:[
+                    {text:'Fin del caso', next:'C1-END', effect:{score:20}}
+                ]
+            },
+            {
+                id:'C1-13',
+                speaker:'Fiscal Díaz',
+                text:'Solicita llamar a otro testigo y comparar versiones.',
+                choices:[
+                    {text:'Llamar a testigo adicional (simulado)', action:'simulateWitness', next:'C1-14'}
+                ]
+            },
+            {
+                id:'C1-14',
+                speaker:'Testigo 2',
+                text:'Vi a alguien que coincidía con la complexión del acusado... pero llevaba la capucha puesta.',
+                choices:[
+                    {text:'Contradecir con la talla de la campera', effect:{cred:-15}, next:'C1-12'},
+                    {text:'Presentar evidencia forense (no disponible)', next:'C1-12'}
+                ]
+            },
+            { id:'C1-END', speaker:'Sistema', text:'Caso 1 terminado. Resultado calculado según tus decisiones.', choices:[] }
+        ]
+    },
+
+    /* ====== CASO 2 ====== */
+    {
+        id: 'C2',
+        title: 'Caso 2 — Asesinato en el Teatro Aurora',
+        description: 'Una actriz es hallada sin vida en el camerino. Múltiples sospechosos: director, asistente, ex-pareja, productor.',
+        phase:0, score:0, credibility:50, timeline:[],
+        evidences:[
+            {id:'C2-E1', title:'Historial de llamadas', detail:'Llamadas indicativas entre víctima y ex-pareja.', unlocked:true,type:'doc'},
+            {id:'C2-E2', title:'Registro de cámara del teatro', detail:'Una figura sale del pasillo a las 23:12. Imagen parcialmente obstruida.', unlocked:true,type:'img'},
+            {id:'C2-E3', title:'Fragmento de veneno', detail:'Rastro de una sustancia encontrada en la copa.', unlocked:false,type:'lab'},
+            {id:'C2-E4', title:'Carta privada', detail:'Mensaje con amenazas. Desbloqueable tras interrogar al asistente.', unlocked:false,type:'msg'}
+        ],
+        characters:{
+            judge:'Juez Ávila',
+            victim:'Laura Moreno',
+            suspects:[
+                {id:'S1', name:'Diego (Director)', motive:'Hubo discusión por el rol principal.'},
+                {id:'S2', name:'Mariana (Asistente)', motive:'Relación tensa con la víctima.'},
+                {id:'S3', name:'Lucas (Ex-pareja)', motive:'Celos.'},
+                {id:'S4', name:'Federico (Productor)', motive:'Contrato millonario en juego.'}
+            ],
+        },
+        scenes:[
+            { id:'C2-0', speaker:'Juez', text:'Caso 512: Muerte en el Teatro Aurora. Fiscal expone su hipótesis.', choices:[{text:'Escuchar fiscal', next:'C2-1'}] },
+            { id:'C2-1', speaker:'Fiscal', text:'Se encontraron rastros de una sustancia en la copa. La víctima había tenido discusiones con varias personas.', choices:[
+                {text:'Pedir lista de sospechosos', next:'C2-2'},
+                {text:'Ir al registro de llamadas', present:'C2-E1', next:'C2-3'}
+            ]},
+            { id:'C2-2', speaker:'Juez', text:'Sospechosos llamados al estrado: Director, Asistente, Ex-pareja, Productor.', choices:[
+                {text:'Interrogar al Director', next:'C2-4'},
+                {text:'Interrogar al Productor', next:'C2-8'}
+            ]},
+            { id:'C2-3', speaker:'Sistema', text:'Registro de llamadas muestra noches tensas con Lucas (ex-pareja).', choices:[
+                {text:'Llamar a Lucas al estrado', next:'C2-5'},
+                {text:'Buscar prueba forense', action:'unlockEvidence', arg:'C2-E3', next:'C2-6'}
+            ]},
+            { id:'C2-4', speaker:'Diego (Director)', text:'Teníamos discusiones, pero jamás mataría a Laura. La veía como familia.', choices:[
+                {text:'Preguntar por la noche del asesinato', next:'C2-7'},
+                {text:'Presionar por contrato', next:'C2-7'}
+            ]},
+            { id:'C2-5', speaker:'Lucas (Ex)', text:'Ella me dejó. Fui a buscar respuestas, sí. Pero me fui antes de la hora del incidente.', choices:[
+                {text:'Pedir comprobante de salida', next:'C2-6'},
+                {text:'Presentar registro de cámara', present:'C2-E2', next:'C2-6'}
+            ]},
+            { id:'C2-6', speaker:'Detective', text:'La cámara muestra a una figura pero está parcialmente obstruida. Hay pistas de manipulación.', choices:[
+                {text:'Solicitar análisis forense (desbloquea C2-E3)', action:'unlockEvidence', arg:'C2-E3', next:'C2-9'},
+                {text:'Interrogar al asistente', next:'C2-10'}
+            ]},
+            { id:'C2-7', speaker:'Diego', text:'Estaba en la sala de ensayo hasta las 22:50. Varios compañeros pueden corroborar.', choices:[
+                {text:'Pedir testigos de apoyo', next:'C2-6'},
+                {text:'Buscar contradicción con horario', next:'C2-6'}
+            ]},
+            { id:'C2-8', speaker:'Federico (Productor)', text:'No tenía motivo… aunque el contrato era importante.', choices:[
+                {text:'Presionar por beneficios económicos', next:'C2-11'},
+                {text:'Examinar documentos del contrato', action:'openDossier', next:'C2-11'}
+            ]},
+            { id:'C2-9', speaker:'Sistema', text:'El laboratorio confirma rastro de una toxina rara en la copa. Esto cambia la naturaleza del caso.', choices:[
+                {text:'Presentar laboratorio al estrado', effect:{score:15}, next:'C2-12'},
+                {text:'Confrontar al sospechoso con la toxina', next:'C2-13'}
+            ]},
+            { id:'C2-10', speaker:'Mariana (Asistente)', text:'Sí, discutimos; no me gustaban ciertos tratos. Pero no la maté.', choices:[
+                {text:'Preguntar por la carta privada', action:'unlockEvidence', arg:'C2-E4', next:'C2-12'},
+                {text:'Atacar su coartada', next:'C2-12'}
+            ]},
+            { id:'C2-11', speaker:'Sistema', text:'Se abren documentos que muestran beneficios al productor en caso de cancelación. Motivo económico ampliado.', choices:[
+                {text:'Volver al juez', next:'C2-12'}
+            ]},
+            { id:'C2-12', speaker:'Juez', text:'Se solicita deliberación. Presenten su mejor teoría o se redactará veredicto según evidencia disponible.', choices:[
+                {text:'Acusar a Lucas (Ex)', next:'C2-END', effect:{score:20}},
+                {text:'Acusar a Mariana (Asistente)', next:'C2-END', effect:{score:20}},
+                {text:'Exigir más pruebas', next:'C2-13'}
+            ]},
+            { id:'C2-13', speaker:'Sistema', text:'Se abre una fase de investigación secundaria donde la defensa puede reunir pruebas adicionales (simulado).', choices:[
+                {text:'Reunir pruebas (mini-juego simulado)', action:'gatherEvidence', next:'C2-12'},
+                {text:'Ir al veredicto ahora', next:'C2-12'}
+            ]},
+            { id:'C2-END', speaker:'Sistema', text:'Caso 2 finalizado con resultado basado en tus decisiones.', choices:[]}
+        ]
+    },
+
+    /* ====== CASO 3 ====== */
+    {
+        id:'C3',
+        title:'Caso 3 — Estafa Corporativa y Testigos Corruptos',
+        description:'Un ejecutivo es acusado de desfalco. Papeles falsos, testigos comprados, y una auditoría interna con errores.',
+        phase:0,score:0,credibility:50,timeline:[],
+        evidences:[
+            {id:'C3-E1', title:'Informe de Auditoría', detail:'Informe con omisiones. Requiere ver la copia completa.', unlocked:true,type:'doc'},
+            {id:'C3-E2', title:'Transferencia bancaria', detail:'Registro que vincula transferencias a una cuenta offshore.', unlocked:true,type:'bank'},
+            {id:'C3-E3', title:'Correo interno', detail:'Correo que sugiere presión por parte del CEO.', unlocked:false,type:'mail'},
+            {id:'C3-E4', title:'Testigo clave (comprado)', detail:'Declaración que podría estar sobornada.', unlocked:true,type:'stmt'}
+        ],
+        characters:{ judge:'Juez Ramírez', accused:'Pablo Santoro', prosecutor:'Fiscal Varela' },
+        scenes:[
+            { id:'C3-0', speaker:'Juez', text:'Caso 801: Acusación de malversación. Fiscal expone documentos iniciales.', choices:[{text:'Escuchar fiscal', next:'C3-1'}] },
+            { id:'C3-1', speaker:'Fiscal', text:'Tenemos transferencias bancarias y un testigo que indica mala conducta.', choices:[
+                {text:'Solicitar informe de auditoría', present:'C3-E1', next:'C3-2'},
+                {text:'Interrogar testigo clave', next:'C3-3'}
+            ]},
+            { id:'C3-2', speaker:'Sistema', text:'El informe tiene páginas tachadas. Solicitan la versión completa.', choices:[
+                {text:'Abrir expediente y revisar informe', action:'openDossier', next:'C3-4'},
+                {text:'Pedir al auditor que testifique', next:'C3-4'}
+            ]},
+            { id:'C3-3', speaker:'Testigo', text:'Yo vi transferencias a cuentas sospechosas; todo apunta al acusado.', choices:[
+                {text:'Preguntar por pruebas', next:'C3-5'},
+                {text:'Contra-interrogar por motivación', next:'C3-6'}
+            ]},
+            { id:'C3-4', speaker:'Defensa', text:'Hemos detectado alteraciones en el informe; requiere análisis forense.', choices:[
+                {text:'Solicitar auditoría forense (desbloquea C3-E3)', action:'unlockEvidence', arg:'C3-E3', next:'C3-5'},
+                {text:'Atacar la fiabilidad del testigo clave (sospecha de soborno)', effect:{cred:-20}, next:'C3-6'}
+            ]},
+            { id:'C3-5', speaker:'Sistema', text:'La transferencia bancaria está ligada a un shell company. Esto complica el caso.', choices:[
+                {text:'Presentar la transferencia en el estrado', effect:{score:12}, next:'C3-6'},
+                {text:'Buscar quién benefició realmente', next:'C3-6'}
+            ]},
+            { id:'C3-6', speaker:'Juez', text:'Se requiere decidir si hay suficientes elementos para procesar a la persona. La defensa debe exponer dudas razonables.', choices:[
+                {text:'Reclamar sobre la manipulación de evidencia', next:'C3-7'},
+                {text:'Solicitar absolución provisional', next:'C3-8'}
+            ]},
+            { id:'C3-7', speaker:'Sistema', text:'Al exponer manipulaciones, la credibilidad del testigo cae. La fiscalía pide más tiempo.', choices:[
+                {text:'Seguir atacando credibilidad', effect:{cred:-15}, next:'C3-8'},
+                {text:'Negociar acuerdo (no recomendado)', next:'C3-8'}
+            ]},
+            { id:'C3-8', speaker:'Sistema', text:'Caso 3 finalizado según estrategia aplicada.', choices:[]}
+        ]
+    }
+];
+
+/* ===============================
+   Estado del juego / utilidades
+   =============================== */
+
+let state = {
+    currentCaseId: null,
+    sceneId: null,
+    score: 0,
+    credibility: 0,
+    timeline: []
+};
+
+// Helper: find case
+function getCaseById(id){ return CASES.find(c=>c.id===id) }
+
+/* ===============================
+   Inicializar interfaz
+   =============================== */
+
+function renderCaseList(){
+    const list = document.getElementById('caseList');
+    list.innerHTML = '';
+    CASES.forEach(c=>{
+        const div = document.createElement('div');
+        div.className = 'case-item' + (state.currentCaseId===c.id ? ' active':'');
+        div.innerHTML = `<strong>${c.title}</strong><div class="small">${c.description}</div>`;
+        div.onclick = ()=>selectCase(c.id);
+        list.appendChild(div);
+    });
+    updateStatus();
+}
+
+function updateStatus(){
+    const s = document.getElementById('statusSummary');
+    s.textContent = state.currentCaseId ? `Caso: ${state.currentCaseId} — Escena: ${state.sceneId||'—'}` : 'Seleccioná un caso para comenzar';
+    document.getElementById('credBadge').textContent = 'Credibilidad: ' + state.credibility;
+    document.getElementById('scoreBadge').textContent = 'Puntos: ' + state.score;
+}
+
+/* ===============================
+   Selección y carga de casos
+   =============================== */
+
+function selectCase(caseId){
+    state.currentCaseId = caseId;
+    const c = getCaseById(caseId);
+    // inicializar valores del caso si no están
+    state.sceneId = c.scenes[0].id;
+    state.score = c.score || 0;
+    state.credibility = c.credibility || 50;
+    state.timeline = c.timeline || [];
+    // render
+    renderStage();
+    renderEvidences();
+    renderCaseList();
+}
+
+/* ===============================
+   Render del escenario central
+   =============================== */
+
+function renderStage(){
+    const box = document.getElementById('dialogBox');
+    const choicesDiv = document.getElementById('choices');
+    if(!state.currentCaseId){ box.textContent='Seleccioná un caso del panel izquierdo.'; choicesDiv.innerHTML=''; document.getElementById('caseTitle').textContent='—'; document.getElementById('casePhase').textContent='Fase: —'; return; }
+
+    const c = getCaseById(state.currentCaseId);
+    const scene = c.scenes.find(s=>s.id===state.sceneId) || c.scenes[0];
+    document.getElementById('caseTitle').textContent = c.title;
+    document.getElementById('casePhase').textContent = `Fase: ${phaseName(c.phase)}`;
+
+    box.innerHTML = `<strong>${scene.speaker}:</strong>\n\n${scene.text}`;
+    choicesDiv.innerHTML = '';
+
+    // Si no hay choices -> caso finalizado
+    if(!scene.choices || scene.choices.length===0){
+        choicesDiv.innerHTML = '<div class="small">Fin de secuencia. Volvé al panel de casos o reiniciá.</div>';
+        // marcar caso final
+        saveCaseOutcome(c);
+        return;
+    }
+
+    // generar botones de choices
+    scene.choices.forEach((ch, idx)=>{
+        const btn = document.createElement('div');
+        btn.className = 'choice';
+        btn.textContent = ch.text;
+        btn.onclick = ()=>handleChoice(c, scene, ch);
+        choicesDiv.appendChild(btn);
+    });
+
+    updateStatus();
+}
+
+/* ===============================
+   Manejo de elecciones / acciones
+   =============================== */
+
+function handleChoice(c, scene, choice){
+    // efectos inmediatos
+    if(choice.effect){
+        if(choice.effect.score) state.score += choice.effect.score;
+        if(choice.effect.cred) state.credibility = clamp(state.credibility + choice.effect.cred, 0, 100);
+        pushTimeline(`${choice.text} (Efecto aplicado)`);
+    }
+
+    // acciones especiales
+    if(choice.action){
+        switch(choice.action){
+            case 'openDossier':
+                openDossier();
+                break;
+            case 'unlockEvidence':
+                unlockEvidence(c, choice.arg);
+                break;
+            case 'present':
+                // if present specified in scene entry, allow directly
+                break;
+            case 'simulateWitness':
+                simulateWitness(c);
+                break;
+            case 'gatherEvidence':
+                gatherEvidence(c);
+                break;
+            case 'openDossier':
+                openDossier();
+                break;
+        }
+    }
+
+    // presentar evidencia si la opcion indica present
+    if(choice.present){
+        presentEvidence(choice.present);
+    }
+
+    // avanzar a siguiente escena
+    if(choice.next){
+        // next puede ser id directo
+        const nextId = choice.next;
+        // si next es 'C1-END' o similar, buscar escena por id
+        const nextScene = c.scenes.find(s=>s.id===nextId);
+        if(nextScene){
+            state.sceneId = nextScene.id;
+        } else {
+            // si no existe, intentar con ident literal (algunos finales usan 'C1-END' referenciado)
+            // si no existe, no avanzar
+            state.sceneId = nextId;
+        }
+    }
+    // actualizar puntos timeline y rerender
+    updateStatus();
+    renderStage();
+    renderEvidences();
+}
+
+/* ===============================
+   Funciones de evidencia / expediente
+   =============================== */
+
+function renderEvidences(){
+    const area = document.getElementById('evidenceArea');
+    area.innerHTML = '';
+    if(!state.currentCaseId) return;
+    const c = getCaseById(state.currentCaseId);
+    c.evidences.forEach(ev=>{
+        const div = document.createElement('div');
+        div.className = 'evidence-item';
+        div.textContent = ev.unlocked ? ev.title : '🔒 Evidencia bloqueada';
+        div.style.opacity = ev.unlocked ? '1' : '.45';
+        div.onclick = ()=>{ if(ev.unlocked) showEvidenceDetail(ev); else alert('Evidencia bloqueada. Avanza más en el caso para desbloquearla.'); };
+        area.appendChild(div);
+    });
+}
+
+function showEvidenceDetail(ev){
+    const title = document.getElementById('eviTitle');
+    const content = document.getElementById('eviContent');
+    const actions = document.getElementById('eviActions');
+    title.textContent = ev.title;
+    content.textContent = ev.detail;
+    actions.innerHTML = '';
+    // botones: presentar, añadir nota
+    const pBtn = document.createElement('button');
+    pBtn.textContent = 'Presentar evidencia en el estrado';
+    pBtn.onclick = ()=>{ presentEvidence(ev.id); };
+    const noteBtn = document.createElement('button');
+    noteBtn.style.marginLeft = '8px';
+    noteBtn.textContent = 'Añadir nota';
+    noteBtn.onclick = ()=>{ const n=prompt('Nota sobre esta evidencia:'); if(n){ pushTimeline(`Nota añadida a ${ev.title}: ${n}`); alert('Nota guardada en timeline'); } };
+
+    actions.appendChild(pBtn);
+    actions.appendChild(noteBtn);
+}
+
+function openDossier(){
+    // abrir panel de expediente (efecto ya se muestra en right panel)
+    const panel = document.getElementById('evidenceArea');
+    if(!state.currentCaseId){ alert('Selecciona un caso antes.'); return; }
+    panel.scrollIntoView({behavior:'smooth'});
+}
+
+/* desbloquear evidencia por id */
+function unlockEvidence(c, evId){
+    const ev = c.evidences.find(e=>e.id===evId);
+    if(ev){
+        ev.unlocked = true;
+        pushTimeline(`Evidencia desbloqueada: ${ev.title}`);
+        renderEvidences();
+        alert(`Evidencia "${ev.title}" desbloqueada.`);
+    }
+}
+
+/* presentar evidencia al estrado */
+function presentEvidence(evId){
+    if(!state.currentCaseId) { alert('Selecciona un caso.'); return; }
+    const c = getCaseById(state.currentCaseId);
+    const ev = c.evidences.find(e=>e.id===evId);
+    if(!ev){ alert('Evidencia no encontrada.'); return; }
+    if(!ev.unlocked){ alert('Evidencia bloqueada.'); return; }
+    // efecto: depende del tipo (simulación simple)
+    pushTimeline(`Evidencia presentada: ${ev.title}`);
+    // efectos según tipo — simple heurística
+    if(ev.type==='lab' || ev.type==='bank' || ev.type==='doc'){ state.score += 8; state.credibility += 5; }
+    if(ev.type==='msg' || ev.type==='stmt'){ state.credibility -= 5; state.score += 2; }
+    // actualizar UI
+    updateStatus();
+    renderStage();
+    alert(`Presentaste "${ev.title}". Su impacto fue aplicado.`);
+}
+
+/* prompt para presentar evidencia por id typing */
+function presentEvidencePrompt(){
+    if(!state.currentCaseId) return alert('Selecciona un caso.');
+    const c = getCaseById(state.currentCaseId);
+    const list = c.evidences.filter(e=>e.unlocked).map(e=>`${e.id} - ${e.title}`).join('\n');
+    const sel = prompt(`Evidencias disponibles:\n${list}\n\nEscribe el id de la evidencia para presentarla (ej: C1-E1)`);
+    if(sel) presentEvidence(sel.trim());
+}
+
+/* ===============================
+   Acciones especiales simuladas
+   =============================== */
+
+function simulateWitness(c){
+    pushTimeline('Se llamó a un testigo adicional que aportó una vista parcial.');
+    // pequeño efecto random
+    const rnd = Math.random();
+    if(rnd > 0.5){ state.score += 6; state.credibility -= 5; alert('El testigo aportó información ambigua. +6 puntos.'); }
+    else { state.score += 2; state.credibility += 3; alert('El testigo apoyó tu posición ligeramente. +2 puntos.'); }
+}
+
+function gatherEvidence(c){
+    pushTimeline('Se llevó a cabo una investigación secundaria (simulada).');
+    // desbloquea alguna evidencia oculta si existe
+    const locked = c.evidences.find(e=>!e.unlocked);
+    if(locked){ locked.unlocked = true; pushTimeline(`Evidencia hallada: ${locked.title}`); alert(`Evidencia encontrada: ${locked.title}`); renderEvidences(); }
+    else alert('No se encontraron evidencias adicionales.');
+}
+
+/* ===============================
+   Timeline / guardado / util
+   =============================== */
+
+function pushTimeline(txt){
+    state.timeline = state.timeline || [];
+    const t = {ts: new Date().toLocaleString(), text: txt};
+    state.timeline.push(t);
+    document.getElementById('timeline').textContent = state.timeline.map(x=>`[${x.ts}] ${x.text}`).join('\n');
+}
+
+function saveProgress(){
+    if(!state.currentCaseId) return alert('Selecciona un caso primero.');
+    const payload = { state, cases: CASES };
+    localStorage.setItem('juicio_save', JSON.stringify(payload));
+    alert('Progreso guardado en localStorage.');
+}
+
+function loadProgress(){
+    const raw = localStorage.getItem('juicio_save');
+    if(!raw) return alert('No hay guardado previo.');
+    const payload = JSON.parse(raw);
+    // merge cases (simple)
+    for(const savedCase of payload.cases){
+        const local = CASES.find(c=>c.id===savedCase.id);
+        if(local){
+            local.evidences = savedCase.evidences;
+            local.scenes = savedCase.scenes;
+            local.phase = savedCase.phase;
+            local.timeline = savedCase.timeline;
+            local.score = savedCase.score;
+            local.credibility = savedCase.credibility;
+        }
+    }
+    state = payload.state;
+    renderCaseList();
+    renderEvidences();
+    renderStage();
+    alert('Progreso cargado.');
+}
+
+function saveCaseOutcome(c){
+    // final: sumarizar
+    pushTimeline(`Caso ${c.id} finalizado. Puntos: ${state.score}, Credibilidad: ${state.credibility}`);
+    // auto-guardar case data
+    c.score = state.score;
+    c.credibility = state.credibility;
+    c.timeline = state.timeline;
+}
+
+/* ===============================
+   Utilidades y pequeños controles
+   =============================== */
+
+function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+function phaseName(n){ const map=['Presentación','Interrogatorio','Contradicción','Pruebas','Veredicto','Final']; return map[n]||'—'; }
+
+function resetGame(){
+    if(!confirm('¿Reiniciar todo? Se perderá el progreso no guardado.')) return;
+    localStorage.removeItem('juicio_save');
+    location.reload();
+}
+
+/* For debug — avanzar escena por id secuencial */
+function forceAdvance(){
+    if(!state.currentCaseId) return alert('Selecciona un caso.');
+    const c = getCaseById(state.currentCaseId);
+    const idx = c.scenes.findIndex(s=>s.id===state.sceneId);
+    if(idx < c.scenes.length-1){
+        state.sceneId = c.scenes[idx+1].id;
+        renderStage();
+    } else alert('No hay más escenas.');
+}
+
+/* ===============================
+   Inicial: renderizar lista
+   =============================== */
+
+renderCaseList();
+
+</script>
+</body>
+</html>
